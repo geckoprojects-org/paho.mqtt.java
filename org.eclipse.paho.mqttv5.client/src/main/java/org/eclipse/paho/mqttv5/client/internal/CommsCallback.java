@@ -21,6 +21,9 @@ package org.eclipse.paho.mqttv5.client.internal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -56,9 +59,9 @@ public class CommsCallback implements Runnable {
 	private static final int INBOUND_QUEUE_SIZE = 10;
 	private MqttCallback mqttCallback;
 	private MqttCallback reconnectInternalCallback;
-	private HashMap<Integer, IMqttMessageListener> callbackMap; // Map of message handler callbacks to internal IDs
-	private HashMap<String, Integer> callbackTopicMap; // Map of Topic Strings to internal callback Ids
-	private HashMap<Integer, Integer> subscriptionIdMap; // Map of Subscription Ids to callback Ids
+	private Map<Integer, IMqttMessageListener> callbackMap; // Map of message handler callbacks to internal IDs
+	private Map<String, Integer> callbackTopicMap; // Map of Topic Strings to internal callback Ids
+	private Map<Integer, Integer> subscriptionIdMap; // Map of Subscription Ids to callback Ids
 	private AtomicInteger messageHandlerId = new AtomicInteger(0);
 	private ClientComms clientComms;
 	private ArrayList<MqttPublish> messageQueue;
@@ -72,7 +75,7 @@ public class CommsCallback implements Runnable {
 	private Thread callbackThread;
 	private String threadName;
 	private Future<?> callbackFuture;
-	
+
 	private final Object workAvailable = new Object();
 	private final Object spaceAvailable = new Object();
 	private ClientState clientState;
@@ -83,9 +86,9 @@ public class CommsCallback implements Runnable {
 		this.clientComms = clientComms;
 		this.messageQueue = new ArrayList<>(INBOUND_QUEUE_SIZE);
 		this.completeQueue = new ArrayList<>(INBOUND_QUEUE_SIZE);
-		this.callbackMap = new HashMap<>();
-		this.callbackTopicMap = new HashMap<>();
-		this.subscriptionIdMap = new HashMap<>();
+		this.callbackMap = new ConcurrentHashMap<>();
+		this.callbackTopicMap = new ConcurrentHashMap<>();
+		this.subscriptionIdMap = new ConcurrentHashMap<>();
 		log.setResourceName(clientComms.getClient().getClientId());
 	}
 
@@ -175,7 +178,7 @@ public class CommsCallback implements Runnable {
 		final String methodName = "run";
 		callbackThread = Thread.currentThread();
 		callbackThread.setName(threadName);
-		
+
 		synchronized (lifecycle) {
 			current_state = State.RUNNING;
 		}
@@ -238,9 +241,9 @@ public class CommsCallback implements Runnable {
 				clientComms.shutdownConnection(null, new MqttException(ex), null);
 			} finally {
 
-			    synchronized (spaceAvailable) {
-                    // Notify the spaceAvailable lock, to say that there's now
-                    // some space on the queue...
+				synchronized (spaceAvailable) {
+					// Notify the spaceAvailable lock, to say that there's now
+					// some space on the queue...
 
 					// @TRACE 706=notify spaceAvailable
 					log.fine(CLASS_NAME, methodName, "706");
@@ -451,7 +454,7 @@ public class CommsCallback implements Runnable {
 		final String methodName = "quiesce";
 		synchronized (lifecycle) {
 			if (current_state == State.RUNNING)
-			current_state = State.QUIESCING;
+				current_state = State.QUIESCING;
 		}
 		synchronized (spaceAvailable) {
 			// @TRACE 711=quiesce notify spaceAvailable
@@ -607,22 +610,39 @@ public class CommsCallback implements Runnable {
 
 		if (aMessage.getProperties().getSubscriptionIdentifiers().isEmpty()) {
 			// No Subscription IDs, use topic filter matching
-			for (Map.Entry<String, Integer> entry : this.callbackTopicMap.entrySet()) {
-				if (MqttTopicValidator.isMatched(entry.getKey(), topicName)) {
+			Set<String> keySet = this.callbackTopicMap.keySet();
+			for (String topic : keySet) {
+				if (MqttTopicValidator.isMatched(topic, topicName)) {
 					aMessage.setId(messageId);
-					this.callbackMap.get(entry.getValue()).messageArrived(topicName, aMessage);
-					delivered = true;
+					Integer callbackId = this.callbackTopicMap.get(topic);
+					if (callbackId != null) {
+						IMqttMessageListener listener = this.callbackMap.get(callbackId);
+						if (listener != null) {
+							listener.messageArrived(topicName, aMessage);
+							delivered = true;
+						}
+					}
 				}
 			}
+			//			for (Map.Entry<String, Integer> entry : this.callbackTopicMap.entrySet()) {
+			//				if (MqttTopicValidator.isMatched(entry.getKey(), topicName)) {
+			//					aMessage.setId(messageId);
+			//					this.callbackMap.get(entry.getValue()).messageArrived(topicName, aMessage);
+			//					delivered = true;
+			//				}
+			//			}
 
 		} else {
 			// We have Subscription IDs
 			for (Integer subId : aMessage.getProperties().getSubscriptionIdentifiers()) {
-				if (this.subscriptionIdMap.containsKey(subId)) {
-					Integer callbackId = this.subscriptionIdMap.get(subId);
+				Integer callbackId = this.subscriptionIdMap.get(subId);
+				if (callbackId != null) {
 					aMessage.setId(messageId);
-					this.callbackMap.get(callbackId).messageArrived(topicName, aMessage);
-					delivered = true;
+					IMqttMessageListener listener = this.callbackMap.get(callbackId);
+					if (listener != null) {
+						listener.messageArrived(topicName, aMessage);
+						delivered = true;
+					}
 				}
 			}
 		}
@@ -658,7 +678,7 @@ public class CommsCallback implements Runnable {
 		}
 		return result;
 	}
-	
+
 	public boolean isQuiescing() {
 		boolean result;
 		synchronized (lifecycle) {
@@ -666,5 +686,5 @@ public class CommsCallback implements Runnable {
 		}
 		return result;
 	}
-	
+
 }

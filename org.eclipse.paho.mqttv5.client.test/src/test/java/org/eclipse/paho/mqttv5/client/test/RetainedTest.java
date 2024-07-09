@@ -13,7 +13,7 @@
 package org.eclipse.paho.mqttv5.client.test;
 
 import static org.junit.Assert.assertTrue;
-import org.junit.runners.Parameterized;
+
 import java.net.URI;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -31,11 +31,12 @@ import org.eclipse.paho.mqttv5.client.test.utilities.Utility;
 import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
 import org.eclipse.paho.mqttv5.common.MqttPersistenceException;
-import org.junit.AfterClass;
+import org.junit.After;
 import org.junit.Assert;
-import org.junit.BeforeClass;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 /**
@@ -49,7 +50,7 @@ public class RetainedTest {
 	private static final String className = cclass.getName();
 	private static final Logger log = Logger.getLogger(className);
 
-	private static final int MESSAGE_COUNT = 20000;
+	private static final int MESSAGE_COUNT = 30000;
 	private static final int TOPIC_COUNT = 4;
 	private static URI serverURI;
 	private static MqttClientFactoryPaho clientFactory;
@@ -58,8 +59,8 @@ public class RetainedTest {
 	/**
 	 * @throws Exception
 	 */
-	@BeforeClass
-	public static void setUpBeforeClass() throws Exception {
+	@Before
+	public void setUpBeforeClass() throws Exception {
 
 		try {
 			String methodName = Utility.getMethodName();
@@ -68,7 +69,7 @@ public class RetainedTest {
 			serverURI = TestProperties.getServerURI();
 			clientFactory = new MqttClientFactoryPaho();
 			clientFactory.open();
-			topicPrefix = "RetainedTest-" + UUID.randomUUID().toString() + "-";
+			topicPrefix = "RetainedTest-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString() + "-";
 
 		} catch (Exception exception) {
 			log.log(Level.SEVERE, "caught exception:", exception);
@@ -79,8 +80,8 @@ public class RetainedTest {
 	/**
 	 * @throws Exception
 	 */
-	@AfterClass
-	public static void tearDownAfterClass() throws Exception {
+	@After
+	public void tearDownAfterClass() throws Exception {
 		String methodName = Utility.getMethodName();
 		LoggingUtilities.banner(log, cclass, methodName);
 
@@ -152,8 +153,8 @@ public class RetainedTest {
 			assertTrue(messageLatch.getCount() + " messages didn't arrive.", result);
 
 		} catch (MqttException exception) {
-			log.log(Level.SEVERE, "caught exception:", exception);
-			Assert.fail("Unexpected exception: " + exception);
+			log.log(Level.SEVERE, "caught MQTT exception:", exception);
+			Assert.fail("Unexpected MQTT exception: " + exception);
 		} finally {
 			if (client != null) {
 				log.info("Disconnecting...");
